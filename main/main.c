@@ -1,26 +1,37 @@
-#include "freertos/FreeRTOS.h"
-#include "esp_wifi.h"
-#include "esp_system.h"
-#include "esp_event.h"
-#include "esp_event_loop.h"
-#include "nvs_flash.h"
-#include "driver/gpio.h"
-#include "freertos/portmacro.h"
-#include "freertos/event_groups.h"
-#include "esp_log.h"
-#include "tcpip_adapter.h"
+#include <freertos/FreeRTOS.h>
+#include <esp_wifi.h>
+#include <esp_system.h>
+#include <esp_event.h>
+#include <esp_event_loop.h>
+#include <nvs_flash.h>
+#include <driver/gpio.h>
+#include <driver/adc.h>
+#include <freertos/portmacro.h>
+#include <freertos/event_groups.h>
+#include <esp_log.h>
+#include <tcpip_adapter.h>
 static EventGroupHandle_t wifi_event_group;
 const int CONNECTED_BIT = BIT0;
 //static char* TAG = "app_main";
 
-#include "lwip/err.h"
-#include "string.h"
+#include <lwip/err.h>
+#include <string.h>
 
-#include "cJSON.h"
+#include <cJSON.h>
 
 #define LED_BUILTIN 16
 #define delay(ms) (vTaskDelay(ms/portTICK_RATE_MS))
+
 char* json_unformatted;
+
+wifi_config_t sta_config = {
+    .sta = {
+        .ssid = "ICTEX51",
+        .password = "espwroom32",
+        .bssid_set = false
+    }
+};
+
 
 const static char http_html_hdr[] =
     "HTTP/1.1 200 OK\r\nContent-type: text/html\r\n\r\n";
@@ -36,6 +47,8 @@ const static char http_index_hml[] = "<!DOCTYPE html>"
       "</head>\n"
       "<body>\n"
       "<h1>Hello World, from ESP32!</h1>\n"
+      "<a href=\"h\">HTML</a>\n"
+      "<a href=\"j\">JSON</a>\n"
       "</body>\n"
       "</html>\n";
 
@@ -80,13 +93,6 @@ static void initialise_wifi(void)
     ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
     ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
-    wifi_config_t sta_config = {
-        .sta = {
-            .ssid = "Nat",
-            .password = "123456789",
-            .bssid_set = false
-        }
-    };
 
     ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &sta_config) );
     ESP_ERROR_CHECK( esp_wifi_start() );
@@ -171,30 +177,30 @@ static void http_server(void *pvParameters)
    netconn_delete(conn);
 }
 
-
 static void generate_json() {
 	cJSON *root, *info, *d;
-	root = cJSON_CreateObject();
 
+	root = cJSON_CreateObject();
 	cJSON_AddItemToObject(root, "d", d = cJSON_CreateObject());
 	cJSON_AddItemToObject(root, "info", info = cJSON_CreateObject());
 
-	cJSON_AddStringToObject(d, "myName", "CMMC-ESP32-NANO");
-	cJSON_AddNumberToObject(d, "temperature", 30.100);
-	cJSON_AddNumberToObject(d, "humidity", 70.123);
+	cJSON_AddStringToObject(d, "myName", "ESP WROOM 32");
+	cJSON_AddNumberToObject(d, "ADC", 0);
 
-	cJSON_AddStringToObject(info, "ssid", "dummy");
-	cJSON_AddNumberToObject(info, "heap", system_get_free_heap_size());
-	cJSON_AddStringToObject(info, "sdk", system_get_sdk_version());
-	cJSON_AddNumberToObject(info, "time", system_get_time());
+	cJSON_AddStringToObject(info, "ssid", (char*)sta_config.sta.ssid);
+	cJSON_AddNumberToObject(info, "heap", esp_get_free_heap_size());
+	cJSON_AddStringToObject(info, "sdk", esp_get_idf_version());
+	cJSON_AddNumberToObject(info, "time", esp_timer_get_time());
 
 	while (1) {
+        int ad = adc1_get_raw(ADC1_CHANNEL_6) + 20;
+    	cJSON_ReplaceItemInObject(d, "ADC", cJSON_CreateNumber(ad));
 		cJSON_ReplaceItemInObject(info, "heap",
-				cJSON_CreateNumber(system_get_free_heap_size()));
+				cJSON_CreateNumber(esp_get_free_heap_size()));
 		cJSON_ReplaceItemInObject(info, "time",
-				cJSON_CreateNumber(system_get_time()));
+				cJSON_CreateNumber(esp_timer_get_time()));
 		cJSON_ReplaceItemInObject(info, "sdk",
-				cJSON_CreateString(system_get_sdk_version()));
+				cJSON_CreateString(esp_get_idf_version()));
 
 		json_unformatted = cJSON_PrintUnformatted(root);
 		printf("[len = %d]  ", strlen(json_unformatted));
@@ -213,11 +219,14 @@ static void generate_json() {
 int app_main(void)
 {
     nvs_flash_init();
-    system_init();
     initialise_wifi();
+    esp_timer_init();
+
+    ESP_LOGI("main", "Initialize ADC");
+    adc1_config_width(ADC_WIDTH_BIT_12);
+    adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_11);
 
     gpio_pad_select_gpio(LED_BUILTIN);
-
     /* Set the GPIO as a push/pull output */
     gpio_set_direction(LED_BUILTIN, GPIO_MODE_OUTPUT);
     xTaskCreate(&generate_json, "json", 2048, NULL, 5, NULL);
