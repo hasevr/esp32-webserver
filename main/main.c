@@ -193,7 +193,7 @@ static void generate_json() {
 	cJSON_AddNumberToObject(info, "time", esp_timer_get_time());
 
 	while (1) {
-        int ad = adc1_get_raw(ADC1_CHANNEL_6) + 20;
+        int ad = adc1_get_raw(ADC1_CHANNEL_6);
     	cJSON_ReplaceItemInObject(d, "ADC", cJSON_CreateNumber(ad));
 		cJSON_ReplaceItemInObject(info, "heap",
 				cJSON_CreateNumber(esp_get_free_heap_size()));
