@@ -1,6 +1,5 @@
-build/
-sdkconfig.old
-.cproject
-.project
-.settings/language.settings.xml
-.settings/org.eclipse.cdt.codan.core.prefs
+.pio
+.vscode/.browse.c_cpp.db*
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch
